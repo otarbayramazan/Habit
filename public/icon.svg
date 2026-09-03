@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="112" fill="#000000"/>
+  <defs>
+    <linearGradient id="flameGrad" x1="0.5" y1="0" x2="0.5" y2="1">
+      <stop offset="0%" stop-color="#fbbf24"/>
+      <stop offset="35%" stop-color="#f97316"/>
+      <stop offset="70%" stop-color="#ea580c"/>
+      <stop offset="100%" stop-color="#dc2626"/>
+    </linearGradient>
+    <linearGradient id="innerGrad" x1="0.5" y1="0" x2="0.5" y2="1">
+      <stop offset="0%" stop-color="#fef3c7"/>
+      <stop offset="100%" stop-color="#fbbf24"/>
+    </linearGradient>
+  </defs>
+  <path d="M256 96 C 256 96, 160 200, 160 300 C 160 370, 205 420, 256 420 C 307 420, 352 370, 352 300 C 352 200, 256 96, 256 96 Z" fill="url(#flameGrad)"/>
+  <path d="M256 200 C 256 200, 210 260, 210 310 C 210 345, 230 375, 256 375 C 282 375, 302 345, 302 310 C 302 260, 256 200, 256 200 Z" fill="url(#innerGrad)" opacity="0.95"/>
+  <path d="M256 250 C 256 250, 235 285, 235 315 C 235 335, 245 355, 256 355 C 267 355, 277 335, 277 315 C 277 285, 256 250, 256 250 Z" fill="#ffffff" opacity="0.7"/>
+</svg>
