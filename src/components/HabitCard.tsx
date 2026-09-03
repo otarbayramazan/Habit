@@ -56,12 +56,14 @@ function SquareCell({
   const completed = count >= target;
   const partial = count > 0 && count < target;
   const isMulti = target > 1;
-  const dim = size === 'sm' ? 'w-full aspect-square rounded-[3px]' : 'rounded-md';
+  const dim = size === 'sm' ? 'w-full aspect-square rounded-[3px]' : 'w-full aspect-square rounded-md';
   const isLocked = locked || isPast || isFuture;
 
-  // Non-scheduled day in a rest-day habit: empty space, band passes through
+  // Non-scheduled rest day: render a transparent placeholder with identical
+  // dimensions to maintain rigid grid alignment. No border, no background,
+  // not clickable. The chain band visually passes through this space.
   if (!isScheduled) {
-    return <div className={`${dim}`} style={{ width: '100%', aspectRatio: '1' }} />;
+    return <div className={dim} style={{ width: '100%', aspectRatio: '1' }} />;
   }
 
   if (isLocked) {
@@ -202,29 +204,28 @@ function WeekView({
           </svg>
         )}
 
-        {/* Square cells (above band) */}
+        {/* Square cells (above band) — every day gets a slot */}
         <div className="relative grid grid-cols-7 gap-1.5" style={{ zIndex: 2 }}>
           {dates.map((d, i) => {
             const scheduled = isScheduledOn(d, frequencyType, frequencyDays);
             const locked = jiggleMode || isFuture(d) || isPast(d);
             return (
-              <div key={i} className="flex flex-col items-center">
-                <SquareCell
-                  count={completions[formatDate(d)] ?? 0}
-                  target={target}
-                  color={color}
-                  isToday={isToday(d)}
-                  isPast={isPast(d)}
-                  isFuture={isFuture(d)}
-                  isScheduled={scheduled}
-                  size="md"
-                  onClick={() => {
-                    if (jiggleMode || isFuture(d) || isPast(d)) return;
-                    onToggle(formatDate(d));
-                  }}
-                  locked={locked}
-                />
-              </div>
+              <SquareCell
+                key={i}
+                count={completions[formatDate(d)] ?? 0}
+                target={target}
+                color={color}
+                isToday={isToday(d)}
+                isPast={isPast(d)}
+                isFuture={isFuture(d)}
+                isScheduled={scheduled}
+                size="md"
+                onClick={() => {
+                  if (jiggleMode || isFuture(d) || isPast(d)) return;
+                  onToggle(formatDate(d));
+                }}
+                locked={locked}
+              />
             );
           })}
         </div>
@@ -361,28 +362,29 @@ function MonthView({
                 const scheduled = isScheduledOn(d, frequencyType, frequencyDays);
                 const locked = jiggleMode || isFuture(d) || isPast(d);
 
+                // Other-month days: transparent placeholder for grid alignment
                 if (otherMonth) {
                   return <div key={di} className="w-full aspect-square" />;
                 }
 
+                // Same-month days: SquareCell handles scheduled vs rest-day
                 return (
-                  <div key={di} className="w-full aspect-square">
-                    <SquareCell
-                      count={completions[formatDate(d)] ?? 0}
-                      target={target}
-                      color={color}
-                      isToday={isToday(d)}
-                      isPast={isPast(d)}
-                      isFuture={isFuture(d)}
-                      isScheduled={scheduled}
-                      size="sm"
-                      onClick={() => {
-                        if (jiggleMode || isFuture(d) || isPast(d)) return;
-                        onToggle(formatDate(d));
-                      }}
-                      locked={locked}
-                    />
-                  </div>
+                  <SquareCell
+                    key={di}
+                    count={completions[formatDate(d)] ?? 0}
+                    target={target}
+                    color={color}
+                    isToday={isToday(d)}
+                    isPast={isPast(d)}
+                    isFuture={isFuture(d)}
+                    isScheduled={scheduled}
+                    size="sm"
+                    onClick={() => {
+                      if (jiggleMode || isFuture(d) || isPast(d)) return;
+                      onToggle(formatDate(d));
+                    }}
+                    locked={locked}
+                  />
                 );
               })}
             </div>
@@ -471,7 +473,7 @@ function YearView({
                   } ${todayCell ? 'ring-1 ring-white/30' : ''}`}
                   style={{
                     backgroundColor: completed ? color : partial ? `${color}50` : scheduled ? '#1a1a1a' : 'transparent',
-                    opacity: future ? 0.12 : past && !completed && !partial ? 0.25 : scheduled ? 1 : 0.3,
+                    opacity: future ? 0.12 : past && !completed && !partial ? 0.25 : scheduled ? 1 : 0,
                   }}
                 >
                   {completed && target > 1 && (
