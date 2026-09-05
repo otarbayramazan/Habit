@@ -29,7 +29,15 @@ function hasRestDays(freqType: FrequencyType): boolean {
   return freqType !== 'everyday';
 }
 
-// ── Square checkbox cell ──
+// ── Empty placeholder: identical dimensions to a square cell, fully invisible ──
+// Takes up physical space in the grid but shows nothing. The chain line
+// passes through this space visually.
+function EmptyPlaceholder({ size }: { size: 'sm' | 'md' }) {
+  const dim = size === 'sm' ? 'w-full aspect-square rounded-[3px]' : 'w-full aspect-square rounded-md';
+  return <div className={dim} style={{ width: '100%', aspectRatio: '1', visibility: 'hidden' }} />;
+}
+
+// ── Square checkbox cell (only for scheduled days) ──
 function SquareCell({
   count,
   target,
@@ -37,7 +45,6 @@ function SquareCell({
   isToday,
   isPast,
   isFuture,
-  isScheduled,
   size,
   onClick,
   locked,
@@ -48,7 +55,6 @@ function SquareCell({
   isToday: boolean;
   isPast: boolean;
   isFuture: boolean;
-  isScheduled: boolean;
   size: 'sm' | 'md';
   onClick: () => void;
   locked: boolean;
@@ -58,13 +64,6 @@ function SquareCell({
   const isMulti = target > 1;
   const dim = size === 'sm' ? 'w-full aspect-square rounded-[3px]' : 'w-full aspect-square rounded-md';
   const isLocked = locked || isPast || isFuture;
-
-  // Non-scheduled rest day: render a transparent placeholder with identical
-  // dimensions to maintain rigid grid alignment. No border, no background,
-  // not clickable. The chain band visually passes through this space.
-  if (!isScheduled) {
-    return <div className={dim} style={{ width: '100%', aspectRatio: '1' }} />;
-  }
 
   if (isLocked) {
     return (
@@ -119,7 +118,7 @@ function SquareCell({
   );
 }
 
-// ── WEEK VIEW with chain band ──
+// ── WEEK VIEW ──
 function WeekView({
   dates,
   completions,
@@ -148,24 +147,19 @@ function WeekView({
   const isToday = (d: Date) => formatDate(d) === formatDate(today);
   const showBand = hasRestDays(frequencyType);
 
-  // Build chain segments — only if habit has rest days
   const segments = showBand
     ? getChainSegments(dates, completions, target, frequencyType, frequencyDays)
     : [];
 
-  // SVG coordinates: 7 columns, each cell is cellW percent wide
+  // SVG: 7 columns. Cell centers at i * cellW + cellW/2
   const cellW = 100 / 7;
-  const lineY = 50;
-  // Band thickness: slightly thinner than cell height. Cell height in % is 100,
-  // but we use the actual pixel approach — the SVG viewBox is 0 0 100 100 with
-  // preserveAspectRatio none, so strokeWidth is in user units. We want the band
-  // to be ~80% of the square's height. The squares fill the full cell height,
-  // so band = 80 (out of 100 viewBox height).
-  const bandThickness = 80;
+  const lineY = 50; // vertical center
+  // Sleek 6px line using non-scaling-stroke (renders as 6 screen pixels)
+  const lineStroke = 6;
 
   return (
     <div className="relative">
-      {/* Day labels */}
+      {/* Day labels — always 7 columns */}
       <div className="grid grid-cols-7 mb-2">
         {dates.map((d, i) => (
           <span key={i} className="text-[10px] text-neutral-500 font-medium text-center">
@@ -174,29 +168,31 @@ function WeekView({
         ))}
       </div>
 
-      <div className="relative" style={{ minHeight: '36px' }}>
-        {/* Chain band SVG (behind cells) */}
+      {/* Grid container — always 7 columns */}
+      <div className="relative">
+        {/* Chain line SVG — BEHIND cells (z-index: 0) */}
         {showBand && segments.length > 0 && (
           <svg
             className="absolute inset-0 w-full h-full pointer-events-none"
             viewBox="0 0 100 100"
             preserveAspectRatio="none"
-            style={{ overflow: 'visible', zIndex: 1 }}
+            style={{ overflow: 'visible', zIndex: 0 }}
           >
             {segments.map((seg, i) => {
+              if (seg.endIdx <= seg.startIdx) return null;
               const x1 = seg.startIdx * cellW + cellW / 2;
               const x2 = seg.endIdx * cellW + cellW / 2;
-              // Only draw if there's a gap (more than 1 cell apart)
-              if (seg.endIdx <= seg.startIdx) return null;
               return (
-                <rect
+                <line
                   key={i}
-                  x={Math.min(x1, x2)}
-                  y={lineY - bandThickness / 2}
-                  width={Math.abs(x2 - x1)}
-                  height={bandThickness}
-                  fill={color}
-                  rx={2}
+                  x1={x1}
+                  y1={lineY}
+                  x2={x2}
+                  y2={lineY}
+                  stroke={color}
+                  strokeWidth={lineStroke}
+                  strokeLinecap="round"
+                  vectorEffect="non-scaling-stroke"
                   opacity={0.85}
                 />
               );
@@ -204,28 +200,31 @@ function WeekView({
           </svg>
         )}
 
-        {/* Square cells (above band) — every day gets a slot */}
-        <div className="relative grid grid-cols-7 gap-1.5" style={{ zIndex: 2 }}>
+        {/* Square cells — ABOVE line (z-index: 10) */}
+        <div className="relative grid grid-cols-7 gap-1.5" style={{ zIndex: 10 }}>
           {dates.map((d, i) => {
             const scheduled = isScheduledOn(d, frequencyType, frequencyDays);
             const locked = jiggleMode || isFuture(d) || isPast(d);
             return (
-              <SquareCell
-                key={i}
-                count={completions[formatDate(d)] ?? 0}
-                target={target}
-                color={color}
-                isToday={isToday(d)}
-                isPast={isPast(d)}
-                isFuture={isFuture(d)}
-                isScheduled={scheduled}
-                size="md"
-                onClick={() => {
-                  if (jiggleMode || isFuture(d) || isPast(d)) return;
-                  onToggle(formatDate(d));
-                }}
-                locked={locked}
-              />
+              scheduled ? (
+                <SquareCell
+                  key={i}
+                  count={completions[formatDate(d)] ?? 0}
+                  target={target}
+                  color={color}
+                  isToday={isToday(d)}
+                  isPast={isPast(d)}
+                  isFuture={isFuture(d)}
+                  size="md"
+                  onClick={() => {
+                    if (jiggleMode || isFuture(d) || isPast(d)) return;
+                    onToggle(formatDate(d));
+                  }}
+                  locked={locked}
+                />
+              ) : (
+                <EmptyPlaceholder key={i} size="md" />
+              )
             );
           })}
         </div>
@@ -234,7 +233,7 @@ function WeekView({
   );
 }
 
-// ── MONTH VIEW with chain band ──
+// ── MONTH VIEW ──
 function MonthView({
   weeks,
   completions,
@@ -272,45 +271,31 @@ function MonthView({
   const rows = weeks.length;
   const cellWPct = 100 / cols;
   const cellHPct = 100 / rows;
-  // Band thickness in viewBox units — ~75% of cell height
-  const bandH = cellHPct * 0.75;
+  // Sleek 6px line using non-scaling-stroke
+  const lineStroke = 6;
 
-  // Generate chain paths as thick rectangles between consecutive completed scheduled days
-  // For same-row segments, draw a rect. For cross-row segments, draw a path.
-  const chainRects: { x: number; y: number; w: number; h: number }[] = [];
-  const chainPaths: string[] = [];
-
+  // Build chain line paths connecting consecutive completed scheduled days
+  const chainLines: { x1: number; y1: number; x2: number; y2: number }[] = [];
   for (const seg of segments) {
     if (seg.endIdx <= seg.startIdx) continue;
-
-    // Walk through each consecutive pair in the segment
     for (let i = seg.startIdx; i < seg.endIdx; i++) {
       const nextIdx = i + 1;
       const col1 = i % cols;
       const row1 = Math.floor(i / cols);
       const col2 = nextIdx % cols;
       const row2 = Math.floor(nextIdx / cols);
-
-      const cx1 = col1 * cellWPct + cellWPct / 2;
-      const cy1 = row1 * cellHPct + cellHPct / 2;
-      const cx2 = col2 * cellWPct + cellWPct / 2;
-      const cy2 = row2 * cellHPct + cellHPct / 2;
-
-      if (row1 === row2) {
-        // Same row: draw a rect from cx1 to cx2
-        const x = Math.min(cx1, cx2);
-        const w = Math.abs(cx2 - cx1);
-        chainRects.push({ x, y: cy1 - bandH / 2, w, h: bandH });
-      } else {
-        // Cross-row: draw a thick path
-        chainPaths.push(`M ${cx1} ${cy1} L ${cx2} ${cy2}`);
-      }
+      chainLines.push({
+        x1: col1 * cellWPct + cellWPct / 2,
+        y1: row1 * cellHPct + cellHPct / 2,
+        x2: col2 * cellWPct + cellWPct / 2,
+        y2: row2 * cellHPct + cellHPct / 2,
+      });
     }
   }
 
   return (
     <div className="relative">
-      {/* Day labels */}
+      {/* Day labels — always 7 columns */}
       <div className="grid grid-cols-7 gap-0.5 mb-1">
         {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((l, i) => (
           <span key={i} className="text-[8px] text-neutral-600 text-center font-medium">{l}</span>
@@ -318,34 +303,24 @@ function MonthView({
       </div>
 
       <div className="relative">
-        {/* Chain band SVG overlay (behind cells) */}
-        {showBand && (chainRects.length > 0 || chainPaths.length > 0) && (
+        {/* Chain line SVG — BEHIND cells (z-index: 0) */}
+        {showBand && chainLines.length > 0 && (
           <svg
             className="absolute inset-0 w-full h-full pointer-events-none"
             viewBox="0 0 100 100"
             preserveAspectRatio="none"
-            style={{ overflow: 'visible', zIndex: 1 }}
+            style={{ overflow: 'visible', zIndex: 0 }}
           >
-            {chainRects.map((r, i) => (
-              <rect
-                key={`r${i}`}
-                x={r.x}
-                y={r.y}
-                width={r.w}
-                height={r.h}
-                fill={color}
-                rx={1}
-                opacity={0.85}
-              />
-            ))}
-            {chainPaths.map((path, i) => (
-              <path
-                key={`p${i}`}
-                d={path}
+            {chainLines.map((ln, i) => (
+              <line
+                key={i}
+                x1={ln.x1}
+                y1={ln.y1}
+                x2={ln.x2}
+                y2={ln.y2}
                 stroke={color}
-                strokeWidth={bandH}
+                strokeWidth={lineStroke}
                 strokeLinecap="round"
-                fill="none"
                 vectorEffect="non-scaling-stroke"
                 opacity={0.85}
               />
@@ -353,8 +328,8 @@ function MonthView({
           </svg>
         )}
 
-        {/* Grid cells (above band) */}
-        <div className="relative" style={{ zIndex: 2 }}>
+        {/* Grid cells — ABOVE line (z-index: 10), always 7 columns per row */}
+        <div className="relative" style={{ zIndex: 10 }}>
           {weeks.map((week, wi) => (
             <div key={wi} className="grid grid-cols-7 gap-0.5 mb-0.5">
               {week.map((d, di) => {
@@ -367,8 +342,8 @@ function MonthView({
                   return <div key={di} className="w-full aspect-square" />;
                 }
 
-                // Same-month days: SquareCell handles scheduled vs rest-day
-                return (
+                // Same-month days: scheduled → SquareCell, rest day → EmptyPlaceholder
+                return scheduled ? (
                   <SquareCell
                     key={di}
                     count={completions[formatDate(d)] ?? 0}
@@ -377,7 +352,6 @@ function MonthView({
                     isToday={isToday(d)}
                     isPast={isPast(d)}
                     isFuture={isFuture(d)}
-                    isScheduled={scheduled}
                     size="sm"
                     onClick={() => {
                       if (jiggleMode || isFuture(d) || isPast(d)) return;
@@ -385,6 +359,8 @@ function MonthView({
                     }}
                     locked={locked}
                   />
+                ) : (
+                  <EmptyPlaceholder key={di} size="sm" />
                 );
               })}
             </div>
@@ -395,7 +371,7 @@ function MonthView({
   );
 }
 
-// ── YEAR VIEW (heatmap, no chain band — too small) ──
+// ── YEAR VIEW ──
 function YearView({
   yearCells,
   yearStart,
@@ -446,19 +422,32 @@ function YearView({
           {yearCells.map(({ d, weekIdx, dayIdx }) => {
             const otherYear = d.getFullYear() !== year;
             const scheduled = isScheduledOn(d, frequencyType, frequencyDays);
-            const completed = scheduled && (completions[formatDate(d)] ?? 0) >= target;
-            const partial = scheduled && (completions[formatDate(d)] ?? 0) > 0 && (completions[formatDate(d)] ?? 0) < target;
             const todayCell = isToday(d);
             const future = isFuture(d);
             const past = isPast(d);
             const locked = jiggleMode || future || past;
 
+            // Always render a grid slot — other-year placeholder
             if (otherYear) {
-              return <div key={`${weekIdx}-${dayIdx}`} style={{ gridColumn: weekIdx + 1, gridRow: dayIdx + 1 }}>
-                <div className="w-full aspect-square rounded-[2px]" />
-              </div>;
+              return (
+                <div key={`${weekIdx}-${dayIdx}`} style={{ gridColumn: weekIdx + 1, gridRow: dayIdx + 1 }}>
+                  <div className="w-full aspect-square rounded-[2px]" />
+                </div>
+              );
             }
 
+            // Non-scheduled rest day: invisible placeholder (same dimensions)
+            if (!scheduled) {
+              return (
+                <div key={`${weekIdx}-${dayIdx}`} style={{ gridColumn: weekIdx + 1, gridRow: dayIdx + 1 }}>
+                  <div className="w-full aspect-square rounded-[2px]" style={{ visibility: 'hidden' }} />
+                </div>
+              );
+            }
+
+            // Scheduled day: clickable cell
+            const completed = (completions[formatDate(d)] ?? 0) >= target;
+            const partial = (completions[formatDate(d)] ?? 0) > 0 && (completions[formatDate(d)] ?? 0) < target;
             return (
               <div key={`${weekIdx}-${dayIdx}`} style={{ gridColumn: weekIdx + 1, gridRow: dayIdx + 1 }}>
                 <button
@@ -472,8 +461,8 @@ function YearView({
                     locked ? 'cursor-default' : 'cursor-pointer active:scale-90 hover:brightness-125'
                   } ${todayCell ? 'ring-1 ring-white/30' : ''}`}
                   style={{
-                    backgroundColor: completed ? color : partial ? `${color}50` : scheduled ? '#1a1a1a' : 'transparent',
-                    opacity: future ? 0.12 : past && !completed && !partial ? 0.25 : scheduled ? 1 : 0,
+                    backgroundColor: completed ? color : partial ? `${color}50` : '#1a1a1a',
+                    opacity: future ? 0.12 : past && !completed && !partial ? 0.25 : 1,
                   }}
                 >
                   {completed && target > 1 && (
