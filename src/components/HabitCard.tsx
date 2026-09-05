@@ -2,11 +2,11 @@ import { useState, useRef, useEffect } from 'react';
 import type { HabitWithCompletions, FrequencyType } from '@/lib/supabase';
 import { useSettings } from '@/context/SettingsContext';
 import { useT } from '@/lib/i18n';
-import { Flame, Check, MoreVertical, Pencil, Trash2 } from 'lucide-react';
+import { Flame, Check, MoreVertical, Pencil, Trash2, Minus } from 'lucide-react';
 import {
   formatDate, addDays, startOfWeek, getWeekDays, getMonthGrid,
   parseDate, startOfMonth, isScheduledOn,
-  getChainSegments, calculateFrequencyStreak,
+  calculateFrequencyStreak,
 } from '@/lib/dateUtils';
 
 type ViewType = 'week' | 'month' | 'year';
@@ -24,17 +24,21 @@ type Props = {
   onDragStart?: (e: React.PointerEvent) => void;
 };
 
-// Whether this habit has rest days (non-everyday frequency)
-function hasRestDays(freqType: FrequencyType): boolean {
-  return freqType !== 'everyday';
-}
-
-// ── Empty placeholder: identical dimensions to a square cell, fully invisible ──
-// Takes up physical space in the grid but shows nothing. The chain line
-// passes through this space visually.
-function EmptyPlaceholder({ size }: { size: 'sm' | 'md' }) {
+// ── Rest Day box: same dimensions as a square checkbox, muted and unclickable ──
+function RestDayBox({ size }: { size: 'sm' | 'md' }) {
   const dim = size === 'sm' ? 'w-full aspect-square rounded-[3px]' : 'w-full aspect-square rounded-md';
-  return <div className={dim} style={{ width: '100%', aspectRatio: '1', visibility: 'hidden' }} />;
+  return (
+    <div
+      className={`${dim} flex items-center justify-center`}
+      style={{ width: '100%', aspectRatio: '1', backgroundColor: '#141414' }}
+    >
+      <Minus
+        className={size === 'sm' ? 'w-2 h-2' : 'w-3 h-3'}
+        style={{ color: '#3a3a3a' }}
+        strokeWidth={2}
+      />
+    </div>
+  );
 }
 
 // ── Square checkbox cell (only for scheduled days) ──
@@ -145,17 +149,6 @@ function WeekView({
   const isFuture = (d: Date) => d > today;
   const isPast = (d: Date) => d < today;
   const isToday = (d: Date) => formatDate(d) === formatDate(today);
-  const showBand = hasRestDays(frequencyType);
-
-  const segments = showBand
-    ? getChainSegments(dates, completions, target, frequencyType, frequencyDays)
-    : [];
-
-  // SVG: 7 columns. Cell centers at i * cellW + cellW/2
-  const cellW = 100 / 7;
-  const lineY = 50; // vertical center
-  // Sleek 6px line using non-scaling-stroke (renders as 6 screen pixels)
-  const lineStroke = 6;
 
   return (
     <div className="relative">
@@ -168,66 +161,31 @@ function WeekView({
         ))}
       </div>
 
-      {/* Grid container — always 7 columns */}
-      <div className="relative">
-        {/* Chain line SVG — BEHIND cells (z-index: 0) */}
-        {showBand && segments.length > 0 && (
-          <svg
-            className="absolute inset-0 w-full h-full pointer-events-none"
-            viewBox="0 0 100 100"
-            preserveAspectRatio="none"
-            style={{ overflow: 'visible', zIndex: 0 }}
-          >
-            {segments.map((seg, i) => {
-              if (seg.endIdx <= seg.startIdx) return null;
-              const x1 = seg.startIdx * cellW + cellW / 2;
-              const x2 = seg.endIdx * cellW + cellW / 2;
-              return (
-                <line
-                  key={i}
-                  x1={x1}
-                  y1={lineY}
-                  x2={x2}
-                  y2={lineY}
-                  stroke={color}
-                  strokeWidth={lineStroke}
-                  strokeLinecap="round"
-                  vectorEffect="non-scaling-stroke"
-                  opacity={0.85}
-                />
-              );
-            })}
-          </svg>
-        )}
-
-        {/* Square cells — ABOVE line (z-index: 10) */}
-        <div className="relative grid grid-cols-7 gap-1.5" style={{ zIndex: 10 }}>
-          {dates.map((d, i) => {
-            const scheduled = isScheduledOn(d, frequencyType, frequencyDays);
-            const locked = jiggleMode || isFuture(d) || isPast(d);
-            return (
-              scheduled ? (
-                <SquareCell
-                  key={i}
-                  count={completions[formatDate(d)] ?? 0}
-                  target={target}
-                  color={color}
-                  isToday={isToday(d)}
-                  isPast={isPast(d)}
-                  isFuture={isFuture(d)}
-                  size="md"
-                  onClick={() => {
-                    if (jiggleMode || isFuture(d) || isPast(d)) return;
-                    onToggle(formatDate(d));
-                  }}
-                  locked={locked}
-                />
-              ) : (
-                <EmptyPlaceholder key={i} size="md" />
-              )
-            );
-          })}
-        </div>
+      {/* Grid — always 7 columns */}
+      <div className="grid grid-cols-7 gap-1.5">
+        {dates.map((d, i) => {
+          const scheduled = isScheduledOn(d, frequencyType, frequencyDays);
+          const locked = jiggleMode || isFuture(d) || isPast(d);
+          return scheduled ? (
+            <SquareCell
+              key={i}
+              count={completions[formatDate(d)] ?? 0}
+              target={target}
+              color={color}
+              isToday={isToday(d)}
+              isPast={isPast(d)}
+              isFuture={isFuture(d)}
+              size="md"
+              onClick={() => {
+                if (jiggleMode || isFuture(d) || isPast(d)) return;
+                onToggle(formatDate(d));
+              }}
+              locked={locked}
+            />
+          ) : (
+            <RestDayBox key={i} size="md" />
+          );
+        })}
       </div>
     </div>
   );
@@ -260,38 +218,6 @@ function MonthView({
   const isFuture = (d: Date) => d > today;
   const isPast = (d: Date) => d < today;
   const isToday = (d: Date) => formatDate(d) === formatDate(today);
-  const showBand = hasRestDays(frequencyType);
-
-  const allDates = weeks.flat();
-  const segments = showBand
-    ? getChainSegments(allDates, completions, target, frequencyType, frequencyDays)
-    : [];
-
-  const cols = 7;
-  const rows = weeks.length;
-  const cellWPct = 100 / cols;
-  const cellHPct = 100 / rows;
-  // Sleek 6px line using non-scaling-stroke
-  const lineStroke = 6;
-
-  // Build chain line paths connecting consecutive completed scheduled days
-  const chainLines: { x1: number; y1: number; x2: number; y2: number }[] = [];
-  for (const seg of segments) {
-    if (seg.endIdx <= seg.startIdx) continue;
-    for (let i = seg.startIdx; i < seg.endIdx; i++) {
-      const nextIdx = i + 1;
-      const col1 = i % cols;
-      const row1 = Math.floor(i / cols);
-      const col2 = nextIdx % cols;
-      const row2 = Math.floor(nextIdx / cols);
-      chainLines.push({
-        x1: col1 * cellWPct + cellWPct / 2,
-        y1: row1 * cellHPct + cellHPct / 2,
-        x2: col2 * cellWPct + cellWPct / 2,
-        y2: row2 * cellHPct + cellHPct / 2,
-      });
-    }
-  }
 
   return (
     <div className="relative">
@@ -302,71 +228,42 @@ function MonthView({
         ))}
       </div>
 
-      <div className="relative">
-        {/* Chain line SVG — BEHIND cells (z-index: 0) */}
-        {showBand && chainLines.length > 0 && (
-          <svg
-            className="absolute inset-0 w-full h-full pointer-events-none"
-            viewBox="0 0 100 100"
-            preserveAspectRatio="none"
-            style={{ overflow: 'visible', zIndex: 0 }}
-          >
-            {chainLines.map((ln, i) => (
-              <line
-                key={i}
-                x1={ln.x1}
-                y1={ln.y1}
-                x2={ln.x2}
-                y2={ln.y2}
-                stroke={color}
-                strokeWidth={lineStroke}
-                strokeLinecap="round"
-                vectorEffect="non-scaling-stroke"
-                opacity={0.85}
+      {/* Grid — always 7 columns per row */}
+      {weeks.map((week, wi) => (
+        <div key={wi} className="grid grid-cols-7 gap-0.5 mb-0.5">
+          {week.map((d, di) => {
+            const otherMonth = d.getMonth() !== currentMonth;
+            const scheduled = isScheduledOn(d, frequencyType, frequencyDays);
+            const locked = jiggleMode || isFuture(d) || isPast(d);
+
+            // Other-month days: transparent placeholder for calendar alignment
+            if (otherMonth) {
+              return <div key={di} className="w-full aspect-square" />;
+            }
+
+            // Same-month: scheduled → SquareCell, rest day → RestDayBox
+            return scheduled ? (
+              <SquareCell
+                key={di}
+                count={completions[formatDate(d)] ?? 0}
+                target={target}
+                color={color}
+                isToday={isToday(d)}
+                isPast={isPast(d)}
+                isFuture={isFuture(d)}
+                size="sm"
+                onClick={() => {
+                  if (jiggleMode || isFuture(d) || isPast(d)) return;
+                  onToggle(formatDate(d));
+                }}
+                locked={locked}
               />
-            ))}
-          </svg>
-        )}
-
-        {/* Grid cells — ABOVE line (z-index: 10), always 7 columns per row */}
-        <div className="relative" style={{ zIndex: 10 }}>
-          {weeks.map((week, wi) => (
-            <div key={wi} className="grid grid-cols-7 gap-0.5 mb-0.5">
-              {week.map((d, di) => {
-                const otherMonth = d.getMonth() !== currentMonth;
-                const scheduled = isScheduledOn(d, frequencyType, frequencyDays);
-                const locked = jiggleMode || isFuture(d) || isPast(d);
-
-                // Other-month days: transparent placeholder for grid alignment
-                if (otherMonth) {
-                  return <div key={di} className="w-full aspect-square" />;
-                }
-
-                // Same-month days: scheduled → SquareCell, rest day → EmptyPlaceholder
-                return scheduled ? (
-                  <SquareCell
-                    key={di}
-                    count={completions[formatDate(d)] ?? 0}
-                    target={target}
-                    color={color}
-                    isToday={isToday(d)}
-                    isPast={isPast(d)}
-                    isFuture={isFuture(d)}
-                    size="sm"
-                    onClick={() => {
-                      if (jiggleMode || isFuture(d) || isPast(d)) return;
-                      onToggle(formatDate(d));
-                    }}
-                    locked={locked}
-                  />
-                ) : (
-                  <EmptyPlaceholder key={di} size="sm" />
-                );
-              })}
-            </div>
-          ))}
+            ) : (
+              <RestDayBox key={di} size="sm" />
+            );
+          })}
         </div>
-      </div>
+      ))}
     </div>
   );
 }
@@ -427,7 +324,7 @@ function YearView({
             const past = isPast(d);
             const locked = jiggleMode || future || past;
 
-            // Always render a grid slot — other-year placeholder
+            // Other-year placeholder for grid alignment
             if (otherYear) {
               return (
                 <div key={`${weekIdx}-${dayIdx}`} style={{ gridColumn: weekIdx + 1, gridRow: dayIdx + 1 }}>
@@ -436,11 +333,16 @@ function YearView({
               );
             }
 
-            // Non-scheduled rest day: invisible placeholder (same dimensions)
+            // Non-scheduled rest day: muted rest box
             if (!scheduled) {
               return (
                 <div key={`${weekIdx}-${dayIdx}`} style={{ gridColumn: weekIdx + 1, gridRow: dayIdx + 1 }}>
-                  <div className="w-full aspect-square rounded-[2px]" style={{ visibility: 'hidden' }} />
+                  <div
+                    className="w-full aspect-square rounded-[2px] flex items-center justify-center"
+                    style={{ backgroundColor: '#141414' }}
+                  >
+                    <Minus className="w-[4px] h-[4px]" style={{ color: '#3a3a3a' }} strokeWidth={2} />
+                  </div>
                 </div>
               );
             }
